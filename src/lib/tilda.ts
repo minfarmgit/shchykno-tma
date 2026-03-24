@@ -1,3 +1,5 @@
+import { normalizePhoneNumber } from "@/lib/phone";
+
 export type TildaRawPayload = Record<string, string | string[]>;
 
 export interface TildaProductItem {
@@ -11,6 +13,7 @@ export interface TildaSubmissionPayload {
   tranId: string | null;
   formId: string | null;
   sessionId: string | null;
+  phoneNumber: string | null;
   products: TildaProductItem[];
   rawPayload: TildaRawPayload;
 }
@@ -154,6 +157,15 @@ export function parseTildaFormData(formData: FormData): TildaSubmissionPayload {
         "session_id",
         "sessionId",
         "sessionid",
+      ]),
+    ),
+    phoneNumber: normalizePhoneNumber(
+      firstStringValue(rawPayload, [
+        "Phone",
+        "phone",
+        "phone_number",
+        "phonenumber",
+        "Телефон",
       ]),
     ),
     products,

@@ -1,4 +1,5 @@
 import { getTelegramWebhookSecret } from "@/lib/env";
+import { maskPhoneNumber, normalizePhoneNumber } from "@/lib/phone";
 import { saveTelegramPhoneNumber } from "@/lib/db";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -30,22 +31,6 @@ interface TelegramWebhookUpdate {
     };
     text?: string;
   };
-}
-
-function normalizePhoneNumber(phoneNumber: string): string {
-  const trimmed = phoneNumber.trim();
-  const hasLeadingPlus = trimmed.startsWith("+");
-  const digitsOnly = trimmed.replace(/[^\d]/g, "");
-
-  return hasLeadingPlus ? `+${digitsOnly}` : digitsOnly;
-}
-
-function maskPhoneNumber(phoneNumber: string) {
-  if (phoneNumber.length <= 4) {
-    return phoneNumber;
-  }
-
-  return `${"*".repeat(Math.max(phoneNumber.length - 4, 0))}${phoneNumber.slice(-4)}`;
 }
 
 export async function POST(request: Request) {
@@ -102,6 +87,14 @@ export async function POST(request: Request) {
 
     const telegramUserId = contact.user_id ?? from.id;
     const normalizedPhoneNumber = normalizePhoneNumber(contact.phone_number);
+
+    if (!normalizedPhoneNumber) {
+      console.warn("Telegram bot webhook skipped: phone number could not be normalized", {
+        updateId: update.update_id ?? null,
+        rawPhoneNumber: contact.phone_number,
+      });
+      return Response.json({ ok: true });
+    }
 
     console.info("Saving phone number from Telegram webhook", {
       updateId: update.update_id ?? null,

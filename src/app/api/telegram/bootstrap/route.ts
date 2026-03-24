@@ -3,6 +3,8 @@ import { ZodError, z } from "zod";
 import {
   bindBrowserSession,
   buildBootstrapResponse,
+  reconcileCourseAccessBySession,
+  reconcileCourseAccessByPhone,
   upsertTelegramUser,
 } from "@/lib/db";
 import { getEnv } from "@/lib/env";
@@ -36,7 +38,33 @@ export async function POST(request: Request) {
 
       if (bindingStatus === "conflict") {
         conflictSessionId = sessionId;
+      } else {
+        const sessionReconciliationResult = await reconcileCourseAccessBySession(client, {
+          sessionId,
+        });
+
+        console.info("Telegram bootstrap session reconciliation finished", {
+          telegramUserId: telegramUser.id,
+          sessionId,
+          bindingStatus,
+          matchedSubmissionCount: sessionReconciliationResult.matchedSubmissionCount,
+          grantedCourseExternalIds: sessionReconciliationResult.grantedCourseExternalIds,
+        });
       }
+    }
+
+    if (telegramUserRow.phone_number) {
+      const phoneReconciliationResult = await reconcileCourseAccessByPhone(client, {
+        telegramUserId: telegramUser.id,
+        phoneNumber: telegramUserRow.phone_number,
+      });
+
+      console.info("Telegram bootstrap phone reconciliation finished", {
+        telegramUserId: telegramUser.id,
+        phoneNumber: telegramUserRow.phone_number,
+        matchedSubmissionCount: phoneReconciliationResult.matchedSubmissionCount,
+        grantedCourseExternalIds: phoneReconciliationResult.grantedCourseExternalIds,
+      });
     }
 
     const payload = await buildBootstrapResponse({

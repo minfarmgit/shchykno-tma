@@ -28,11 +28,8 @@ interface TelegramWebhookUpdate {
 }
 
 function normalizePhoneNumber(phoneNumber: string) {
-  const trimmed = phoneNumber.trim();
-  const hasLeadingPlus = trimmed.startsWith("+");
-  const digitsOnly = trimmed.replace(/[^\d]/g, "");
-
-  return hasLeadingPlus ? `+${digitsOnly}` : digitsOnly;
+  const digitsOnly = phoneNumber.trim().replace(/[^\d]/g, "");
+  return digitsOnly || null;
 }
 
 function maskPhoneNumber(phoneNumber: string) {
@@ -110,6 +107,18 @@ Deno.serve(async (request) => {
 
     const telegramUserId = contact.user_id ?? from.id;
     const phoneNumber = normalizePhoneNumber(contact.phone_number);
+
+    if (!phoneNumber) {
+      console.warn(
+        "Supabase Telegram webhook skipped: phone number could not be normalized",
+        {
+          updateId: update.update_id ?? null,
+          rawPhoneNumber: contact.phone_number,
+        },
+      );
+
+      return Response.json({ ok: true });
+    }
     const confirmedAt = new Date().toISOString();
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",

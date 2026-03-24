@@ -33,6 +33,17 @@ interface CourseMatchCandidateRow {
   tilda_product_name: string | null;
 }
 
+interface TildaPhoneMatchRow {
+  tranid: string;
+  matched_course_external_ids: string[];
+}
+
+interface TildaSessionMatchRow {
+  tranid: string;
+  matched_course_external_ids: string[];
+  product_names: string[];
+}
+
 function mapCourse(row: CourseRow): CourseDto {
   return {
     id: row.id,
@@ -276,6 +287,7 @@ export async function upsertTildaSubmission(
     tranId: string;
     formId: string | null;
     sessionId: string | null;
+    phoneNumber: string | null;
     courseExternalId: string | null;
     courseTitle: string | null;
     productNames: string[];
@@ -289,6 +301,7 @@ export async function upsertTildaSubmission(
       tranid: params.tranId,
       formid: params.formId,
       session_id: params.sessionId,
+      normalized_phone_number: params.phoneNumber,
       course_external_id: params.courseExternalId,
       course_title: params.courseTitle,
       product_names: params.productNames,
@@ -352,6 +365,134 @@ export async function grantCourseAccessForSession(
   if (result.error) {
     throw new Error(`Failed to grant course access for session: ${result.error.message}`);
   }
+}
+
+export async function reconcileCourseAccessBySession(
+  client: SupabaseAdminClient,
+  params: {
+    sessionId: string;
+  },
+) {
+  const submissionsResult = await client
+    .from("tilda_submissions")
+    .select("tranid, matched_course_external_ids, product_names")
+    .eq("session_id", params.sessionId)
+    .eq("match_status", "matched");
+
+  if (submissionsResult.error) {
+    throw new Error(
+      `Failed to load Tilda submissions for session reconciliation: ${submissionsResult.error.message}`,
+    );
+  }
+
+  const rows = submissionsResult.data as TildaSessionMatchRow[];
+  const grants = new Map<string, { tranId: string | null; productName: string | null }>();
+
+  for (const row of rows) {
+    for (const [index, courseExternalId] of (row.matched_course_external_ids ?? []).entries()) {
+      if (!courseExternalId) {
+        continue;
+      }
+
+      if (!grants.has(courseExternalId)) {
+        grants.set(courseExternalId, {
+          tranId: row.tranid ?? null,
+          productName: row.product_names?.[index] ?? row.product_names?.[0] ?? null,
+        });
+      }
+    }
+  }
+
+  if (grants.size === 0) {
+    return {
+      matchedSubmissionCount: rows.length,
+      grantedCourseExternalIds: [] as string[],
+    };
+  }
+
+  const now = new Date().toISOString();
+  const grantResult = await client.from("course_access_grants").upsert(
+    [...grants.entries()].map(([courseExternalId, metadata]) => ({
+      session_id: params.sessionId,
+      course_external_id: courseExternalId,
+      source: "tilda",
+      tilda_tranid: metadata.tranId,
+      product_name: metadata.productName,
+      updated_at: now,
+      granted_at: now,
+    })),
+    { onConflict: "session_id,course_external_id" },
+  );
+
+  if (grantResult.error) {
+    throw new Error(
+      `Failed to reconcile course access by session: ${grantResult.error.message}`,
+    );
+  }
+
+  return {
+    matchedSubmissionCount: rows.length,
+    grantedCourseExternalIds: [...grants.keys()],
+  };
+}
+
+export async function reconcileCourseAccessByPhone(
+  client: SupabaseAdminClient,
+  params: {
+    telegramUserId: number;
+    phoneNumber: string;
+  },
+) {
+  const submissionsResult = await client
+    .from("tilda_submissions")
+    .select("tranid, matched_course_external_ids")
+    .eq("normalized_phone_number", params.phoneNumber)
+    .eq("match_status", "matched");
+
+  if (submissionsResult.error) {
+    throw new Error(
+      `Failed to load Tilda submissions for phone reconciliation: ${submissionsResult.error.message}`,
+    );
+  }
+
+  const rows = submissionsResult.data as TildaPhoneMatchRow[];
+  const courseExternalIds = new Set<string>();
+
+  for (const row of rows) {
+    for (const courseExternalId of row.matched_course_external_ids ?? []) {
+      if (courseExternalId) {
+        courseExternalIds.add(courseExternalId);
+      }
+    }
+  }
+
+  if (courseExternalIds.size === 0) {
+    return {
+      matchedSubmissionCount: rows.length,
+      grantedCourseExternalIds: [] as string[],
+    };
+  }
+
+  const now = new Date().toISOString();
+  const grantResult = await client.from("course_access_grants").upsert(
+    [...courseExternalIds].map((courseExternalId) => ({
+      telegram_user_id: params.telegramUserId,
+      course_external_id: courseExternalId,
+      source: "tilda",
+      updated_at: now,
+      granted_at: now,
+    })),
+    { onConflict: "telegram_user_id,course_external_id" },
+  );
+
+  if (grantResult.error) {
+    throw new Error(`Failed to reconcile course access by phone: ${grantResult.error.message}`);
+  }
+
+  return {
+    matchedSubmissionCount: rows.length,
+    grantedCourseExternalIds: [...courseExternalIds],
+  };
 }
 
 export async function buildBootstrapResponse(params: {

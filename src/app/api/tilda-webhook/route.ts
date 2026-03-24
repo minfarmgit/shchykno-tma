@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
       tranId: payload.tranId,
       formId: payload.formId,
       sessionId: payload.sessionId,
+      phoneNumber: payload.phoneNumber,
       products: payload.products,
       rawPayload: payload.rawPayload,
     });
@@ -139,6 +140,7 @@ export async function POST(request: NextRequest) {
     console.info("Tilda webhook product match result", {
       tranId: payload.tranId,
       sessionId: payload.sessionId,
+      phoneNumber: payload.phoneNumber,
       positiveProducts,
       matchedProducts,
     });
@@ -151,6 +153,7 @@ export async function POST(request: NextRequest) {
         tranId: payload.tranId,
         formId: payload.formId,
         sessionId: payload.sessionId,
+        phoneNumber: payload.phoneNumber,
         courseExternalId: firstMatchedProduct?.courseExternalId ?? null,
         courseTitle: firstMatchedProduct?.courseTitle ?? firstPositiveProduct?.title ?? null,
         productNames: positiveProducts.flatMap((product) => (product.title ? [product.title] : [])),
@@ -161,6 +164,7 @@ export async function POST(request: NextRequest) {
       console.info("Tilda webhook stored submission", {
         tranId: payload.tranId,
         sessionId: payload.sessionId,
+        phoneNumber: payload.phoneNumber,
         matchedProducts,
         matchStatus,
       });
@@ -170,6 +174,7 @@ export async function POST(request: NextRequest) {
       console.warn("Tilda webhook skipped access grant", {
         tranId: payload.tranId,
         sessionId: payload.sessionId,
+        phoneNumber: payload.phoneNumber,
         positiveProducts,
         matchedProducts,
         rawPayload: payload.rawPayload,
