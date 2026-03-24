@@ -53,6 +53,8 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    console.error("Telegram bootstrap error", error);
+
     if (error instanceof ZodError) {
       return Response.json({ error: "Invalid bootstrap payload." }, { status: 400 });
     }

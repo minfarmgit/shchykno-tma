@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ensureBrowserSessionExists, upsertTildaSubmission } from "@/lib/db";
-import { getEnv } from "@/lib/env";
+import { getTildaWebhookSecret } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { parseTildaFormData } from "@/lib/tilda";
 
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   try {
     const token = request.nextUrl.searchParams.get("token");
 
-    if (token !== getEnv().TILDA_WEBHOOK_SECRET) {
+    if (token !== getTildaWebhookSecret()) {
       return textResponse("Unauthorized", 401);
     }
 
@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
     });
 
     return textResponse("ok", 200);
-  } catch {
+  } catch (error) {
+    console.error("Tilda webhook error", error);
     return textResponse("Internal server error", 500);
   }
 }

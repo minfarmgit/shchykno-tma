@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "@/components/mini-app-shell.module.css";
 import type { BootstrapResponse, CourseDto } from "@/lib/contracts";
 
@@ -136,10 +136,9 @@ function CourseCard({
 
 export function MiniAppShell() {
   const [payload, setPayload] = useState<BootstrapResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRequestingPhone, setIsRequestingPhone] = useState(false);
-  const [phoneHint, setPhoneHint] = useState<string | null>(null);
+  const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
+  const phoneRequestStartedRef = useRef(false);
 
   useEffect(() => {
     const webApp = window.Telegram?.WebApp;
@@ -155,8 +154,6 @@ export function MiniAppShell() {
     const webApp = window.Telegram?.WebApp;
 
     if (!webApp?.initData) {
-      setError("Откройте mini app из Telegram по startapp-ссылке, чтобы загрузить ваши курсы.");
-      setIsLoading(false);
       return null;
     }
 
@@ -180,14 +177,7 @@ export function MiniAppShell() {
     }
 
     const nextPayload = (await response.json()) as BootstrapResponse;
-
     setPayload(nextPayload);
-    setError(null);
-
-    if (nextPayload.user.hasPhoneNumber) {
-      setPhoneHint("Телефон сохранен");
-    }
-
     return nextPayload;
   };
 
@@ -196,16 +186,12 @@ export function MiniAppShell() {
 
     queueMicrotask(() => {
       void loadBootstrap(controller.signal)
-        .catch((nextError: unknown) => {
+        .catch((error: unknown) => {
           if (controller.signal.aborted) {
             return;
           }
 
-          setError(
-            nextError instanceof Error
-              ? nextError.message
-              : "Не удалось загрузить данные пользователя.",
-          );
+          console.error("Failed to load bootstrap payload", error);
         })
         .finally(() => {
           if (!controller.signal.aborted) {
@@ -217,51 +203,58 @@ export function MiniAppShell() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    const webApp = window.Telegram?.WebApp;
+
+    if (
+      !payload ||
+      payload.user.hasPhoneNumber ||
+      phoneRequestStartedRef.current ||
+      !webApp?.requestContact
+    ) {
+      return;
+    }
+
+    phoneRequestStartedRef.current = true;
+
+    queueMicrotask(() => {
+      setIsRefreshingProfile(true);
+
+      webApp.requestContact((shared) => {
+        if (!shared) {
+          setIsRefreshingProfile(false);
+          return;
+        }
+
+        const refreshWithRetries = async () => {
+          for (let attempt = 0; attempt < 4; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            const nextPayload = await loadBootstrap();
+
+            if (nextPayload?.user.hasPhoneNumber) {
+              return;
+            }
+          }
+        };
+
+        void refreshWithRetries()
+          .catch((error) => {
+            console.error("Failed to refresh profile after contact request", error);
+          })
+          .finally(() => {
+            setIsRefreshingProfile(false);
+          });
+      });
+    });
+  }, [payload]);
+
   const heroCourse = useMemo(
     () => payload?.ownedCourses[0] ?? payload?.availableCourses[0] ?? null,
     [payload],
   );
 
-  const requestPhoneNumber = () => {
-    const webApp = window.Telegram?.WebApp;
-
-    if (!webApp?.requestContact) {
-      setPhoneHint("Текущая версия Telegram не поддерживает запрос номера.");
-      return;
-    }
-
-    setIsRequestingPhone(true);
-    setPhoneHint(null);
-
-    webApp.requestContact((shared) => {
-      if (!shared) {
-        setPhoneHint("Номер не был отправлен.");
-        setIsRequestingPhone(false);
-        return;
-      }
-
-      setPhoneHint("Запрос отправлен. Обновляем профиль…");
-
-      const refreshWithRetries = async () => {
-        for (let attempt = 0; attempt < 4; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1200));
-          const nextPayload = await loadBootstrap();
-
-          if (nextPayload?.user.hasPhoneNumber) {
-            break;
-          }
-        }
-      };
-
-      void refreshWithRetries()
-        .catch(() => {
-          setPhoneHint("Номер отправлен, но профиль пока не обновился.");
-        })
-        .finally(() => {
-          setIsRequestingPhone(false);
-        });
-    });
-  };
+  const hasOwnedCourses = Boolean(payload?.ownedCourses.length);
+  const hasAvailableCourses = Boolean(payload?.availableCourses.length);
 
   return (
     <main className={styles.page}>
@@ -275,40 +268,18 @@ export function MiniAppShell() {
             <h1 className={styles.heroTitle}>{heroCourse?.title ?? "Base"}</h1>
             <p className={styles.heroSubtitle}>by Evgenia Shchykno</p>
             <p className={styles.heroBody}>
-              {heroCourse?.subtitle || "Тренировки и питание в удобном формате mini app."}
+              {heroCourse?.subtitle ||
+                "Тренировки и питание в удобном формате mini app."}
             </p>
           </div>
         </section>
 
         <div className={styles.content}>
-          {error ? <p className={styles.errorText}>{error}</p> : null}
-
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}>
+          {hasOwnedCourses ? (
+            <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Мои курсы</h2>
-              {payload?.user.hasPhoneNumber ? (
-                <span className={styles.phoneBadge}>
-                  {payload.user.phoneNumber ?? "Телефон сохранен"}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className={styles.phoneButton}
-                  onClick={requestPhoneNumber}
-                  disabled={isRequestingPhone}
-                >
-                  {isRequestingPhone ? "Отправляем…" : "Поделиться номером"}
-                </button>
-              )}
-            </div>
-
-            {phoneHint ? <p className={styles.sectionHint}>{phoneHint}</p> : null}
-
-            {isLoading ? (
-              <LoadingSection />
-            ) : payload?.ownedCourses.length ? (
               <div className={styles.list}>
-                {payload.ownedCourses.map((course) => (
+                {payload?.ownedCourses.map((course) => (
                   <CourseCard
                     key={course.id}
                     course={course}
@@ -318,25 +289,16 @@ export function MiniAppShell() {
                   />
                 ))}
               </div>
-            ) : (
-              <div className={styles.emptyCard}>
-                <h3 className={styles.emptyTitle}>Пока нет привязанных покупок</h3>
-                <p className={styles.emptyText}>
-                  Как только Tilda отправит submit с вашим `session_id`, курс появится в
-                  этом разделе.
-                </p>
-              </div>
-            )}
-          </section>
+            </section>
+          ) : null}
 
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>Все курсы</h2>
-
             {isLoading ? (
               <LoadingSection />
-            ) : payload?.availableCourses.length ? (
+            ) : hasAvailableCourses ? (
               <div className={styles.list}>
-                {payload.availableCourses.map((course) => (
+                {payload?.availableCourses.map((course) => (
                   <CourseCard
                     key={course.id}
                     course={course}
@@ -345,16 +307,15 @@ export function MiniAppShell() {
                   />
                 ))}
               </div>
-            ) : (
-              <div className={styles.emptyCard}>
-                <h3 className={styles.emptyTitle}>Все доступные курсы уже привязаны</h3>
-                <p className={styles.emptyText}>
-                  В каталоге не осталось некупленных курсов для этого пользователя.
-                </p>
-              </div>
-            )}
+            ) : null}
           </section>
         </div>
+
+        {isRefreshingProfile ? (
+          <div className={styles.loaderOverlay} aria-hidden="true">
+            <span className={styles.loaderSpinner} />
+          </div>
+        ) : null}
       </div>
     </main>
   );

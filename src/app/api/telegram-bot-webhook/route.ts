@@ -1,4 +1,4 @@
-import { getEnv } from "@/lib/env";
+import { getTelegramWebhookSecret } from "@/lib/env";
 import { saveTelegramPhoneNumber } from "@/lib/db";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
@@ -33,7 +33,7 @@ function normalizePhoneNumber(phoneNumber: string): string {
 export async function POST(request: Request) {
   const secretToken = request.headers.get("x-telegram-bot-api-secret-token");
 
-  if (secretToken !== getEnv().TELEGRAM_BOT_WEBHOOK_SECRET) {
+  if (secretToken !== getTelegramWebhookSecret()) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -57,7 +57,8 @@ export async function POST(request: Request) {
     });
 
     return Response.json({ ok: true });
-  } catch {
+  } catch (error) {
+    console.error("Telegram bot webhook error", error);
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }
