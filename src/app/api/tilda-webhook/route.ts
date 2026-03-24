@@ -112,6 +112,11 @@ export async function POST(request: NextRequest) {
     });
 
     const client = createSupabaseAdminClient();
+
+    if (payload.sessionId) {
+      await ensureBrowserSessionExists(client, payload.sessionId);
+    }
+
     const courseCandidates = await listCourseMatchCandidates(client);
     const courseCandidatesByNormalizedTitle = new Map(
       courseCandidates.map((course) => [
@@ -182,7 +187,6 @@ export async function POST(request: NextRequest) {
       return textResponse("ok", 200);
     }
 
-    await ensureBrowserSessionExists(client, payload.sessionId);
     await grantCourseAccessForSession(client, {
       sessionId: payload.sessionId,
       tranId: payload.tranId,
