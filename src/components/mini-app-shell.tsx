@@ -4,6 +4,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { CourseCard } from "@/components/mini-app/course-card";
 import { LoadingSection } from "@/components/mini-app/loading-section";
 import { StatusNotice } from "@/components/mini-app/status-notice";
+import { Toast } from "@/components/mini-app/toast";
 import {
   getTelegramContactErrorMessage,
   useRequestTelegramContact,
@@ -63,40 +64,47 @@ export function MiniAppShell() {
     process.env.NODE_ENV === "development"
       ? "В dev-режиме добавьте NEXT_PUBLIC_DEV_TELEGRAM_INIT_DATA в .env и перезапустите next dev, либо откройте приложение внутри Telegram."
       : "Откройте приложение внутри Telegram, чтобы загрузить профиль и курсы.";
+  const toastItems = [
+    showUnavailableNotice
+      ? {
+          id: `unavailable:${unavailableMessage}`,
+          title: "Mini App недоступен",
+          message: unavailableMessage,
+        }
+      : null,
+    bootstrapErrorMessage
+      ? {
+          id: `bootstrap:${bootstrapErrorMessage}`,
+          title: "Не удалось загрузить данные",
+          message: bootstrapErrorMessage,
+        }
+      : null,
+    phoneShareErrorMessage
+      ? {
+          id: `phone:${phoneShareErrorMessage}`,
+          title: "Не удалось получить номер",
+          message: phoneShareErrorMessage,
+        }
+      : null,
+  ].filter(Boolean) as { id: string; title: string; message: string }[];
 
   return (
     <main className="min-h-screen bg-white">
       <div className="relative min-h-screen w-full bg-white">
+        {toastItems.length > 0 ? (
+          <div className="pointer-events-none fixed inset-x-0 top-3 z-30 grid gap-2 px-4 sm:top-4 sm:px-[18px]">
+            {toastItems.map((toast) => (
+              <Toast key={toast.id} title={toast.title} message={toast.message} tone="error" />
+            ))}
+          </div>
+        ) : null}
+
         <section
           className="aspect-[13/12] w-full bg-[url('/header.webp')] bg-cover bg-center bg-no-repeat"
           aria-hidden="true"
         />
 
         <div className="grid gap-[30px] px-4 pt-[26px] pb-8 sm:px-[18px]">
-          {showUnavailableNotice ? (
-            <StatusNotice
-              title="Mini App недоступен"
-              message={unavailableMessage}
-              tone="error"
-            />
-          ) : null}
-
-          {bootstrapErrorMessage ? (
-            <StatusNotice
-              title="Не удалось загрузить данные"
-              message={bootstrapErrorMessage}
-              tone="error"
-            />
-          ) : null}
-
-          {phoneShareErrorMessage ? (
-            <StatusNotice
-              title="Не удалось получить номер"
-              message={phoneShareErrorMessage}
-              tone="error"
-            />
-          ) : null}
-
           {hasOwnedCourses ? (
             <section className="grid gap-4">
               <h2 className="text-[1.25rem] leading-[1.08] font-bold tracking-[-0.04em] text-[#111111]">

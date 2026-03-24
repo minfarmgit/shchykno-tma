@@ -122,22 +122,32 @@ export async function saveTelegramPhoneNumber(
     username?: string | null;
     phoneNumber: string;
   },
-): Promise<void> {
-  const result = await client.from("telegram_users").upsert(
-    {
-      telegram_user_id: params.telegramUserId,
-      first_name: params.firstName,
-      username: params.username ?? null,
-      phone_number: params.phoneNumber,
-      phone_number_confirmed_at: new Date().toISOString(),
-      last_seen_at: new Date().toISOString(),
-    },
-    { onConflict: "telegram_user_id" },
-  );
+) {
+  const confirmedAt = new Date().toISOString();
+  const result = await client
+    .from("telegram_users")
+    .upsert(
+      {
+        telegram_user_id: params.telegramUserId,
+        first_name: params.firstName,
+        username: params.username ?? null,
+        phone_number: params.phoneNumber,
+        phone_number_confirmed_at: confirmedAt,
+        last_seen_at: new Date().toISOString(),
+      },
+      { onConflict: "telegram_user_id" },
+    )
+    .select("id, telegram_user_id, username, first_name, phone_number")
+    .single();
 
   if (result.error) {
     throw new Error(`Failed to save telegram phone number: ${result.error.message}`);
   }
+
+  return {
+    row: result.data as TelegramUserRow,
+    confirmedAt,
+  };
 }
 
 async function readBrowserSession(
