@@ -17,6 +17,34 @@ function textResponse(body: string, status: number) {
   });
 }
 
+function maskToken(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.length <= 8) {
+    return "***";
+  }
+
+  return `${value.slice(0, 4)}***${value.slice(-4)}`;
+}
+
+function summarizeHeaders(request: NextRequest) {
+  const authorizationHeader = request.headers.get("authorization")?.trim() ?? null;
+
+  return {
+    contentType: request.headers.get("content-type"),
+    userAgent: request.headers.get("user-agent"),
+    xForwardedFor: request.headers.get("x-forwarded-for"),
+    xForwardedHost: request.headers.get("x-forwarded-host"),
+    xForwardedProto: request.headers.get("x-forwarded-proto"),
+    authorization: maskToken(authorizationHeader),
+    xTildaWebhookToken: maskToken(request.headers.get("x-tilda-webhook-token")?.trim() ?? null),
+    xApiKey: maskToken(request.headers.get("x-api-key")?.trim() ?? null),
+    headerNames: [...request.headers.keys()],
+  };
+}
+
 function getTildaWebhookToken(request: NextRequest) {
   for (const headerName of TILDA_TOKEN_HEADER_NAMES) {
     const headerValue = request.headers.get(headerName)?.trim();
@@ -38,16 +66,41 @@ function getTildaWebhookToken(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    console.info("Tilda webhook request received", {
+      method: request.method,
+      path: request.nextUrl.pathname,
+      headers: summarizeHeaders(request),
+    });
+
     const token = getTildaWebhookToken(request);
 
     if (token !== getTildaWebhookSecret()) {
+      console.warn("Tilda webhook unauthorized", {
+        receivedToken: maskToken(token),
+        headers: summarizeHeaders(request),
+      });
       return textResponse("Unauthorized", 401);
     }
 
     const formData = await request.formData();
     const payload = parseTildaFormData(formData);
 
+    console.info("Tilda webhook parsed payload", {
+      tranId: payload.tranId,
+      formId: payload.formId,
+      sessionId: payload.sessionId,
+      courseExternalId: payload.courseExternalId,
+      courseTitle: payload.courseTitle,
+      rawPayload: payload.rawPayload,
+    });
+
     if (!payload.tranId || !payload.sessionId || !payload.courseExternalId) {
+      console.warn("Tilda webhook missing required fields", {
+        tranId: payload.tranId,
+        sessionId: payload.sessionId,
+        courseExternalId: payload.courseExternalId,
+        rawPayload: payload.rawPayload,
+      });
       return textResponse("Missing required fields: tranid, session_id or externalid", 422);
     }
 
@@ -61,6 +114,12 @@ export async function POST(request: NextRequest) {
       courseExternalId: payload.courseExternalId,
       courseTitle: payload.courseTitle,
       rawPayload: payload.rawPayload,
+    });
+
+    console.info("Tilda webhook stored submission", {
+      tranId: payload.tranId,
+      sessionId: payload.sessionId,
+      courseExternalId: payload.courseExternalId,
     });
 
     return textResponse("ok", 200);
