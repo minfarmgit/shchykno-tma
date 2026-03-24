@@ -6,6 +6,8 @@ import { parseTildaFormData } from "@/lib/tilda";
 
 export const runtime = "nodejs";
 
+const TILDA_TOKEN_HEADER_NAMES = ["x-tilda-webhook-token", "x-api-key"] as const;
+
 function textResponse(body: string, status: number) {
   return new Response(body, {
     status,
@@ -15,9 +17,28 @@ function textResponse(body: string, status: number) {
   });
 }
 
+function getTildaWebhookToken(request: NextRequest) {
+  for (const headerName of TILDA_TOKEN_HEADER_NAMES) {
+    const headerValue = request.headers.get(headerName)?.trim();
+
+    if (headerValue) {
+      return headerValue;
+    }
+  }
+
+  const authorizationHeader = request.headers.get("authorization")?.trim();
+
+  if (!authorizationHeader) {
+    return null;
+  }
+
+  const bearerMatch = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  return bearerMatch?.[1]?.trim() || authorizationHeader;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const token = request.nextUrl.searchParams.get("token");
+    const token = getTildaWebhookToken(request);
 
     if (token !== getTildaWebhookSecret()) {
       return textResponse("Unauthorized", 401);
