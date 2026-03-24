@@ -27,6 +27,12 @@ interface BrowserSessionRow {
   telegram_user_id: string | null;
 }
 
+interface CourseMatchCandidateRow {
+  external_id: string;
+  title: string;
+  tilda_product_name: string | null;
+}
+
 function mapCourse(row: CourseRow): CourseDto {
   return {
     id: row.id,
@@ -58,34 +64,55 @@ async function getPublishedCourses(client: SupabaseAdminClient): Promise<CourseD
 
 async function getOwnedExternalIds(
   client: SupabaseAdminClient,
-  telegramUserId: string,
+  params: {
+    telegramUserRowId: string;
+    telegramUserId: number;
+  },
 ): Promise<Set<string>> {
-  const sessionResult = await client
-    .from("browser_sessions")
-    .select("session_id")
-    .eq("telegram_user_id", telegramUserId);
+  const [directResult, sessionResult] = await Promise.all([
+    client
+      .from("course_access_grants")
+      .select("course_external_id")
+      .eq("telegram_user_id", params.telegramUserId),
+    client
+      .from("browser_sessions")
+      .select("session_id")
+      .eq("telegram_user_id", params.telegramUserRowId),
+  ]);
+
+  if (directResult.error) {
+    throw new Error(`Failed to load direct course access grants: ${directResult.error.message}`);
+  }
 
   if (sessionResult.error) {
     throw new Error(`Failed to load browser sessions: ${sessionResult.error.message}`);
   }
 
+  const ownedExternalIds = new Set(
+    directResult.data.map((row) => row.course_external_id as string),
+  );
   const sessionIds = sessionResult.data.map((row) => row.session_id);
 
   if (sessionIds.length === 0) {
-    return new Set<string>();
+    return ownedExternalIds;
   }
 
-  const submissionsResult = await client
-    .from("tilda_submissions")
+  const sessionAccessResult = await client
+    .from("course_access_grants")
     .select("course_external_id")
-    .eq("match_status", "matched")
     .in("session_id", sessionIds);
 
-  if (submissionsResult.error) {
-    throw new Error(`Failed to load submissions: ${submissionsResult.error.message}`);
+  if (sessionAccessResult.error) {
+    throw new Error(
+      `Failed to load session course access grants: ${sessionAccessResult.error.message}`,
+    );
   }
 
-  return new Set(submissionsResult.data.map((row) => row.course_external_id));
+  for (const row of sessionAccessResult.data) {
+    ownedExternalIds.add(row.course_external_id as string);
+  }
+
+  return ownedExternalIds;
 }
 
 export async function upsertTelegramUser(
@@ -248,23 +275,15 @@ export async function upsertTildaSubmission(
   params: {
     tranId: string;
     formId: string | null;
-    sessionId: string;
-    courseExternalId: string;
+    sessionId: string | null;
+    courseExternalId: string | null;
     courseTitle: string | null;
+    productNames: string[];
+    matchedCourseExternalIds: string[];
     rawPayload: Record<string, string | string[]>;
   },
 ): Promise<"matched" | "unmatched"> {
-  const courseLookup = await client
-    .from("courses")
-    .select("external_id")
-    .eq("external_id", params.courseExternalId)
-    .maybeSingle();
-
-  if (courseLookup.error) {
-    throw new Error(`Failed to check course match: ${courseLookup.error.message}`);
-  }
-
-  const matchStatus = courseLookup.data ? "matched" : "unmatched";
+  const matchStatus = params.matchedCourseExternalIds.length > 0 ? "matched" : "unmatched";
   const result = await client.from("tilda_submissions").upsert(
     {
       tranid: params.tranId,
@@ -272,6 +291,8 @@ export async function upsertTildaSubmission(
       session_id: params.sessionId,
       course_external_id: params.courseExternalId,
       course_title: params.courseTitle,
+      product_names: params.productNames,
+      matched_course_external_ids: params.matchedCourseExternalIds,
       raw_payload: params.rawPayload,
       match_status: matchStatus,
       updated_at: new Date().toISOString(),
@@ -286,6 +307,53 @@ export async function upsertTildaSubmission(
   return matchStatus;
 }
 
+export async function listCourseMatchCandidates(
+  client: SupabaseAdminClient,
+): Promise<CourseMatchCandidateRow[]> {
+  const result = await client
+    .from("courses")
+    .select("external_id, title, tilda_product_name");
+
+  if (result.error) {
+    throw new Error(`Failed to load course match candidates: ${result.error.message}`);
+  }
+
+  return result.data as CourseMatchCandidateRow[];
+}
+
+export async function grantCourseAccessForSession(
+  client: SupabaseAdminClient,
+  params: {
+    sessionId: string;
+    tranId: string | null;
+    items: Array<{
+      courseExternalId: string;
+      productName: string;
+    }>;
+  },
+) {
+  if (params.items.length === 0) {
+    return;
+  }
+
+  const result = await client.from("course_access_grants").upsert(
+    params.items.map((item) => ({
+      session_id: params.sessionId,
+      course_external_id: item.courseExternalId,
+      source: "tilda",
+      tilda_tranid: params.tranId,
+      product_name: item.productName,
+      updated_at: new Date().toISOString(),
+      granted_at: new Date().toISOString(),
+    })),
+    { onConflict: "session_id,course_external_id" },
+  );
+
+  if (result.error) {
+    throw new Error(`Failed to grant course access for session: ${result.error.message}`);
+  }
+}
+
 export async function buildBootstrapResponse(params: {
   client: SupabaseAdminClient;
   telegramUserRow: TelegramUserRow;
@@ -295,7 +363,10 @@ export async function buildBootstrapResponse(params: {
 }): Promise<BootstrapResponse> {
   const [publishedCourses, ownedExternalIds] = await Promise.all([
     getPublishedCourses(params.client),
-    getOwnedExternalIds(params.client, params.telegramUserRow.id),
+    getOwnedExternalIds(params.client, {
+      telegramUserRowId: params.telegramUserRow.id,
+      telegramUserId: params.telegramUser.id,
+    }),
   ]);
 
   return {

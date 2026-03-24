@@ -1,17 +1,17 @@
 export type TildaRawPayload = Record<string, string | string[]>;
 
-interface ProductCandidate {
+export interface TildaProductItem {
   index: number;
-  externalId?: string;
-  title?: string;
+  externalId: string | null;
+  title: string | null;
+  quantity: number | null;
 }
 
 export interface TildaSubmissionPayload {
   tranId: string | null;
   formId: string | null;
   sessionId: string | null;
-  courseExternalId: string | null;
-  courseTitle: string | null;
+  products: TildaProductItem[];
   rawPayload: TildaRawPayload;
 }
 
@@ -39,8 +39,23 @@ function firstStringValue(payload: TildaRawPayload, keys: string[]): string | nu
   return null;
 }
 
-function collectProducts(payload: TildaRawPayload): ProductCandidate[] {
-  const productMap = new Map<number, ProductCandidate>();
+function parseQuantity(rawValue: string | undefined): number | null {
+  if (!rawValue) {
+    return null;
+  }
+
+  const normalizedValue = rawValue.replace(",", ".").trim();
+  const parsedValue = Number(normalizedValue);
+
+  if (!Number.isFinite(parsedValue)) {
+    return null;
+  }
+
+  return parsedValue;
+}
+
+function collectProducts(payload: TildaRawPayload): TildaProductItem[] {
+  const productMap = new Map<number, TildaProductItem>();
 
   for (const [key, value] of Object.entries(payload)) {
     const match = key.match(/\[(\d+)\]\[([^\]]+)\]$/);
@@ -52,7 +67,12 @@ function collectProducts(payload: TildaRawPayload): ProductCandidate[] {
     const index = Number(match[1]);
     const field = match[2].toLowerCase();
     const fieldValue = Array.isArray(value) ? value[0] : value;
-    const candidate = productMap.get(index) ?? { index };
+    const candidate = productMap.get(index) ?? {
+      index,
+      externalId: null,
+      title: null,
+      quantity: null,
+    };
 
     if (fieldValue) {
       if (field === "externalid" || field === "external_id") {
@@ -62,12 +82,24 @@ function collectProducts(payload: TildaRawPayload): ProductCandidate[] {
       if (["title", "name", "product", "productname"].includes(field)) {
         candidate.title = fieldValue.trim();
       }
+
+      if (field === "quantity") {
+        candidate.quantity = parseQuantity(fieldValue);
+      }
     }
 
     productMap.set(index, candidate);
   }
 
   return [...productMap.values()].sort((left, right) => left.index - right.index);
+}
+
+export function normalizeCourseMatchText(rawValue: string | null | undefined) {
+  if (!rawValue) {
+    return "";
+  }
+
+  return rawValue.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 export function normalizeSessionId(rawValue: string | null | undefined): string | null {
@@ -105,36 +137,26 @@ export function parseTildaFormData(formData: FormData): TildaSubmissionPayload {
   }
 
   const products = collectProducts(rawPayload);
-  const firstProductWithExternalId = products.find((product) => product.externalId);
 
   return {
     tranId: firstStringValue(rawPayload, [
       "tranid",
       "transaction_id",
       "transactionid",
+      "payment[orderid]",
+      "payment[systranid]",
       "orderid",
     ]),
     formId: firstStringValue(rawPayload, ["formid", "form_id"]),
     sessionId: normalizeSessionId(
-      firstStringValue(rawPayload, ["session_id", "sessionId", "sessionid"]),
+      firstStringValue(rawPayload, [
+        "client_session_id",
+        "session_id",
+        "sessionId",
+        "sessionid",
+      ]),
     ),
-    courseExternalId:
-      firstProductWithExternalId?.externalId ??
-      firstStringValue(rawPayload, [
-        "externalid",
-        "external_id",
-        "course_external_id",
-        "course_slug",
-      ]),
-    courseTitle:
-      firstProductWithExternalId?.title ??
-      firstStringValue(rawPayload, [
-        "title",
-        "name",
-        "product",
-        "product_name",
-        "course_title",
-      ]),
+    products,
     rawPayload,
   };
 }
