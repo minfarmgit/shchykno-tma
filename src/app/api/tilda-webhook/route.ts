@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         receivedToken: maskToken(token),
         headers: summarizeHeaders(request),
       });
-      return textResponse("Unauthorized", 401);
+      return textResponse("ok", 200);
     }
 
     const formData = await request.formData();
@@ -101,13 +101,13 @@ export async function POST(request: NextRequest) {
         courseExternalId: payload.courseExternalId,
         rawPayload: payload.rawPayload,
       });
-      return textResponse("Missing required fields: tranid, session_id or externalid", 422);
+      return textResponse("ok", 200);
     }
 
     const client = createSupabaseAdminClient();
 
     await ensureBrowserSessionExists(client, payload.sessionId);
-    await upsertTildaSubmission(client, {
+    const matchStatus = await upsertTildaSubmission(client, {
       tranId: payload.tranId,
       formId: payload.formId,
       sessionId: payload.sessionId,
@@ -120,11 +120,12 @@ export async function POST(request: NextRequest) {
       tranId: payload.tranId,
       sessionId: payload.sessionId,
       courseExternalId: payload.courseExternalId,
+      matchStatus,
     });
 
     return textResponse("ok", 200);
   } catch (error) {
     console.error("Tilda webhook error", error);
-    return textResponse("Internal server error", 500);
+    return textResponse("ok", 200);
   }
 }
