@@ -19,6 +19,7 @@ interface TelegramUserRow {
   telegram_user_id: number;
   username: string | null;
   first_name: string;
+  phone_number: string | null;
 }
 
 interface BrowserSessionRow {
@@ -103,7 +104,7 @@ export async function upsertTelegramUser(
       },
       { onConflict: "telegram_user_id" },
     )
-    .select("id, telegram_user_id, username, first_name")
+    .select("id, telegram_user_id, username, first_name, phone_number")
     .single();
 
   if (result.error) {
@@ -111,6 +112,32 @@ export async function upsertTelegramUser(
   }
 
   return result.data as TelegramUserRow;
+}
+
+export async function saveTelegramPhoneNumber(
+  client: SupabaseAdminClient,
+  params: {
+    telegramUserId: number;
+    firstName: string;
+    username?: string | null;
+    phoneNumber: string;
+  },
+): Promise<void> {
+  const result = await client.from("telegram_users").upsert(
+    {
+      telegram_user_id: params.telegramUserId,
+      first_name: params.firstName,
+      username: params.username ?? null,
+      phone_number: params.phoneNumber,
+      phone_number_confirmed_at: new Date().toISOString(),
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "telegram_user_id" },
+  );
+
+  if (result.error) {
+    throw new Error(`Failed to save telegram phone number: ${result.error.message}`);
+  }
 }
 
 async function readBrowserSession(
@@ -274,6 +301,8 @@ export async function buildBootstrapResponse(params: {
       id: params.telegramUser.id,
       firstName: params.telegramUser.first_name,
       username: params.telegramUser.username ?? null,
+      phoneNumber: params.telegramUserRow.phone_number,
+      hasPhoneNumber: Boolean(params.telegramUserRow.phone_number),
     },
   };
 }

@@ -16,8 +16,13 @@ interface TelegramWebApp {
   initDataUnsafe?: TelegramWebAppInitDataUnsafe;
   ready(): void;
   expand(): void;
+  isVersionAtLeast(version: string): boolean;
+  setHeaderColor(color: string): void;
+  setBackgroundColor(color: string): void;
+  setBottomBarColor?(color: string): void;
   openLink(url: string): void;
   openTelegramLink(url: string): void;
+  requestContact(callback?: (shared: boolean) => void): void;
 }
 
 interface Window {

@@ -5,6 +5,7 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   TELEGRAM_BOT_USERNAME: z.string().min(1),
+  TELEGRAM_BOT_WEBHOOK_SECRET: z.string().min(1),
   TILDA_WEBHOOK_SECRET: z.string().min(1),
 });
 
@@ -22,6 +23,7 @@ export function getEnv(): Env {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
     TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME,
+    TELEGRAM_BOT_WEBHOOK_SECRET: process.env.TELEGRAM_BOT_WEBHOOK_SECRET,
     TILDA_WEBHOOK_SECRET: process.env.TILDA_WEBHOOK_SECRET,
   });
 

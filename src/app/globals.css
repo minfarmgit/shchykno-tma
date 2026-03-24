@@ -1,15 +1,9 @@
 :root {
-  --page-bg: #fff6fa;
-  --page-bg-soft: #ffe1ef;
   --surface: rgba(255, 255, 255, 0.78);
   --surface-strong: rgba(255, 255, 255, 0.96);
   --ink: #181216;
   --muted: #6f6670;
   --line: rgba(24, 18, 22, 0.08);
-  --accent: #ff8dc5;
-  --accent-strong: #f56ab3;
-  --accent-soft: #ffd2e6;
-  --button: #0f0d0f;
   --shadow: 0 18px 60px rgba(117, 50, 88, 0.15);
 }
 
@@ -29,9 +23,7 @@ body {
   display: flex;
   flex-direction: column;
   color: var(--ink);
-  background:
-    radial-gradient(circle at top, rgba(255, 164, 208, 0.55), transparent 32%),
-    linear-gradient(180deg, var(--page-bg-soft) 0%, var(--page-bg) 38%, #fffdfd 100%);
+  background: #ffffff;
   font-family: var(--font-manrope), "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

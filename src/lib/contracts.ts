@@ -23,5 +23,7 @@ export interface BootstrapResponse {
     id: number;
     firstName: string;
     username: string | null;
+    phoneNumber: string | null;
+    hasPhoneNumber: boolean;
   };
 }
