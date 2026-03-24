@@ -21,8 +21,15 @@ function getBootstrapErrorMessage(error: unknown) {
 }
 
 export function MiniAppShell() {
-  const { data: payload, error, isBootstrapPending, hasBootstrapSource } =
-    useTelegramBootstrap();
+  const {
+    data: payload,
+    error,
+    isBootstrapPending,
+    hasBootstrapSource,
+    hasSessionStartParam,
+    isFetching,
+    refetch,
+  } = useTelegramBootstrap();
   const requestTelegramContact = useRequestTelegramContact();
   const phoneRequestStartedRef = useRef(false);
   const hasMounted = useSyncExternalStore(
@@ -104,9 +111,31 @@ export function MiniAppShell() {
           aria-hidden="true"
         />
 
-        <div className="grid gap-[30px] px-4 pt-[26px] pb-8 sm:px-[18px]">
+        <div className="grid px-4 pb-8 sm:px-[18px]">
+          <div className="w-full flex items-center -translate-y-[18px] justify-center scale-90">
+            <div className="grid gap-2">
+              <button
+                type="button"
+                className="inline-flex h-[36px] w-fit items-center justify-center rounded-full bg-black px-4 text-[0.88rem] font-extrabold text-white disabled:cursor-default"
+                disabled={isBootstrapPending || isFetching}
+                onClick={() => {
+                  void refetch();
+                }}
+              >
+                {isBootstrapPending || isFetching ? "Обновляем..." : "Обновить"}
+              </button>
+            </div>
+          </div>
+
+          {hasSessionStartParam ? (
+            <StatusNotice
+              title="Проверяем оплату"
+              message="После оплаты проверка может занять некоторое время."
+            />
+          ) : null}
+
           {hasOwnedCourses ? (
-            <section className="grid gap-4">
+            <section className="grid gap-4 mb-6">
               <h2 className="text-[1.25rem] leading-[1.08] font-bold tracking-[-0.04em] text-[#111111]">
                 Ваши курсы
               </h2>

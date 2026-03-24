@@ -5,6 +5,7 @@ import { fetchTelegramBootstrap } from "@/lib/api/telegram";
 import { getTelegramBootstrapQueryOptions } from "@/lib/query/telegram-bootstrap";
 import { queryKeys } from "@/lib/query/query-keys";
 import { getTelegramBootstrapRequest } from "@/lib/telegram-webapp";
+import { normalizeSessionId } from "@/lib/tilda";
 
 export function useTelegramBootstrap() {
   const request = getTelegramBootstrapRequest();
@@ -33,6 +34,7 @@ export function useTelegramBootstrap() {
     ...query,
     request,
     hasBootstrapSource,
+    hasSessionStartParam: Boolean(normalizeSessionId(request?.startParam)),
     isBootstrapPending: hasBootstrapSource ? query.isPending : false,
   };
 }

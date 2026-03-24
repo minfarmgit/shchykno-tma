@@ -11,6 +11,8 @@ export function getTelegramBootstrapQueryOptions(
   return queryOptions({
     queryKey: queryKeys.telegramBootstrap(request.initData, request.startParam),
     queryFn: ({ signal }) => fetchTelegramBootstrap(request, signal),
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: true,
     staleTime: 30_000,
     gcTime: 5 * 60_000,
   });
