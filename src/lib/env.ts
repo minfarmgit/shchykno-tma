@@ -18,7 +18,6 @@ const tildaWebhookEnvSchema = z.object({
 type Env = z.infer<typeof envSchema>;
 
 let cachedEnv: Env | null = null;
-let cachedTelegramWebhookSecret: string | null = null;
 let cachedTildaWebhookSecret: string | null = null;
 
 function buildEnvError(issues: { path: PropertyKey[] }[]) {
@@ -48,20 +47,15 @@ export function getEnv(): Env {
 }
 
 export function getTelegramWebhookSecret(): string {
-  if (cachedTelegramWebhookSecret) {
-    return cachedTelegramWebhookSecret;
-  }
-
   const parsed = telegramWebhookEnvSchema.safeParse({
     TELEGRAM_BOT_WEBHOOK_SECRET: process.env.TELEGRAM_BOT_WEBHOOK_SECRET,
   });
 
   if (!parsed.success) {
-    throw new Error(buildEnvError(parsed.error.issues));
+    return "";
   }
 
-  cachedTelegramWebhookSecret = parsed.data.TELEGRAM_BOT_WEBHOOK_SECRET;
-  return cachedTelegramWebhookSecret;
+  return parsed.data.TELEGRAM_BOT_WEBHOOK_SECRET;
 }
 
 export function getTildaWebhookSecret(): string {

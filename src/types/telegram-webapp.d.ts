@@ -3,6 +3,7 @@ interface TelegramWebAppUser {
   first_name: string;
   last_name?: string;
   username?: string;
+  allows_write_to_pm?: boolean;
 }
 
 interface TelegramWebAppInitDataUnsafe {
@@ -23,6 +24,14 @@ interface TelegramWebApp {
   openLink(url: string): void;
   openTelegramLink(url: string): void;
   requestContact(callback?: (shared: boolean) => void): void;
+  onEvent?(
+    eventType: "contactRequested",
+    eventHandler: (event: { status: "sent" | "cancelled" }) => void,
+  ): void;
+  offEvent?(
+    eventType: "contactRequested",
+    eventHandler: (event: { status: "sent" | "cancelled" }) => void,
+  ): void;
 }
 
 interface Window {

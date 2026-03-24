@@ -1,210 +1,41 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import styles from "@/components/mini-app-shell.module.css";
-import type { BootstrapResponse, CourseDto } from "@/lib/contracts";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { CourseCard } from "@/components/mini-app/course-card";
+import { LoadingSection } from "@/components/mini-app/loading-section";
+import { StatusNotice } from "@/components/mini-app/status-notice";
+import {
+  getTelegramContactErrorMessage,
+  useRequestTelegramContact,
+} from "@/hooks/use-request-telegram-contact";
+import { useTelegramBootstrap } from "@/hooks/use-telegram-bootstrap";
+import { getTelegramWebApp, setupTelegramWebApp } from "@/lib/telegram-webapp";
 
-function getStartParam(): string | null {
-  const searchParams = new URLSearchParams(window.location.search);
-
-  return (
-    searchParams.get("tgWebAppStartParam") ??
-    searchParams.get("startapp") ??
-    window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
-    window.Telegram?.WebApp?.initDataUnsafe?.startParam ??
-    null
-  );
-}
-
-function isTelegramLink(url: string): boolean {
-  return /^https?:\/\/t\.me\//i.test(url);
-}
-
-function openExternalUrl(url: string) {
-  const webApp = window.Telegram?.WebApp;
-
-  if (isTelegramLink(url) && webApp?.openTelegramLink) {
-    webApp.openTelegramLink(url);
-    return;
+function getBootstrapErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
   }
 
-  if (webApp?.openLink) {
-    webApp.openLink(url);
-    return;
-  }
-
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
-function getBadgeLabel(course: CourseDto) {
-  const words = course.title.trim().split(/\s+/).filter(Boolean);
-
-  return words
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
-    .join("")
-    .slice(0, 2);
-}
-
-function buildHeroBackground(coverImageUrl: string | null) {
-  if (!coverImageUrl) {
-    return undefined;
-  }
-
-  return {
-    backgroundImage: `linear-gradient(180deg, rgba(16, 16, 16, 0.12) 0%, rgba(120, 25, 90, 0.54) 100%), url("${coverImageUrl}")`,
-  };
-}
-
-function getErrorMessage(response: Response, fallback: string) {
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (contentType.includes("application/json")) {
-    return response
-      .json()
-      .then((payload: unknown) => {
-        if (
-          payload &&
-          typeof payload === "object" &&
-          "error" in payload &&
-          typeof payload.error === "string"
-        ) {
-          return payload.error;
-        }
-
-        return fallback;
-      })
-      .catch(() => fallback);
-  }
-
-  return response.text().then((body) => body || fallback);
-}
-
-function LoadingSection() {
-  return (
-    <div className={styles.loadingStack} aria-hidden="true">
-      <div className={styles.skeleton} />
-      <div className={styles.skeleton} />
-    </div>
-  );
-}
-
-function CourseCard({
-  course,
-  buttonLabel,
-  buttonKind,
-  disabled = false,
-}: {
-  course: CourseDto;
-  buttonLabel: string;
-  buttonKind: "buy" | "open";
-  disabled?: boolean;
-}) {
-  const actionUrl = buttonKind === "open" ? course.accessUrl : course.buyUrl;
-  const buttonClassName = [
-    styles.cardButton,
-    buttonKind === "open" ? styles.cardButtonDark : "",
-    disabled || !actionUrl ? styles.cardButtonDisabled : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    <article className={styles.card}>
-      <div className={styles.cardTop}>
-        <div className={styles.badge}>{getBadgeLabel(course)}</div>
-        <div className={styles.textBlock}>
-          <h3 className={styles.cardTitle}>{course.title}</h3>
-          <p className={styles.cardSubtitle}>{course.subtitle}</p>
-        </div>
-      </div>
-      <button
-        type="button"
-        className={buttonClassName}
-        disabled={disabled || !actionUrl}
-        onClick={() => {
-          if (actionUrl) {
-            openExternalUrl(actionUrl);
-          }
-        }}
-      >
-        {buttonLabel}
-      </button>
-    </article>
-  );
+  return "Не удалось загрузить данные пользователя.";
 }
 
 export function MiniAppShell() {
-  const [payload, setPayload] = useState<BootstrapResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
+  const { data: payload, error, isBootstrapPending, hasBootstrapSource } =
+    useTelegramBootstrap();
+  const requestTelegramContact = useRequestTelegramContact();
   const phoneRequestStartedRef = useRef(false);
+  const hasMounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
 
   useEffect(() => {
-    const webApp = window.Telegram?.WebApp;
-
-    webApp?.ready();
-    webApp?.expand();
-    webApp?.setHeaderColor("#ffffff");
-    webApp?.setBackgroundColor("#ffffff");
-    webApp?.setBottomBarColor?.("#ffffff");
-  }, []);
-
-  const loadBootstrap = async (signal?: AbortSignal): Promise<BootstrapResponse | null> => {
-    const webApp = window.Telegram?.WebApp;
-
-    if (!webApp?.initData) {
-      return null;
-    }
-
-    const response = await fetch("/api/telegram/bootstrap", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        initData: webApp.initData,
-        startParam: getStartParam(),
-      }),
-      cache: "no-store",
-      signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        await getErrorMessage(response, "Не удалось загрузить данные пользователя."),
-      );
-    }
-
-    const nextPayload = (await response.json()) as BootstrapResponse;
-    setPayload(nextPayload);
-    return nextPayload;
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    queueMicrotask(() => {
-      void loadBootstrap(controller.signal)
-        .catch((error: unknown) => {
-          if (controller.signal.aborted) {
-            return;
-          }
-
-          console.error("Failed to load bootstrap payload", error);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) {
-            setIsLoading(false);
-          }
-        });
-    });
-
-    return () => controller.abort();
+    setupTelegramWebApp(getTelegramWebApp());
   }, []);
 
   useEffect(() => {
-    const webApp = window.Telegram?.WebApp;
+    const webApp = getTelegramWebApp();
 
     if (
       !payload ||
@@ -216,70 +47,63 @@ export function MiniAppShell() {
     }
 
     phoneRequestStartedRef.current = true;
+    requestTelegramContact.mutate();
+  }, [payload, requestTelegramContact]);
 
-    queueMicrotask(() => {
-      setIsRefreshingProfile(true);
-
-      webApp.requestContact((shared) => {
-        if (!shared) {
-          setIsRefreshingProfile(false);
-          return;
-        }
-
-        const refreshWithRetries = async () => {
-          for (let attempt = 0; attempt < 4; attempt += 1) {
-            await new Promise((resolve) => setTimeout(resolve, 1200));
-            const nextPayload = await loadBootstrap();
-
-            if (nextPayload?.user.hasPhoneNumber) {
-              return;
-            }
-          }
-        };
-
-        void refreshWithRetries()
-          .catch((error) => {
-            console.error("Failed to refresh profile after contact request", error);
-          })
-          .finally(() => {
-            setIsRefreshingProfile(false);
-          });
-      });
-    });
-  }, [payload]);
-
-  const heroCourse = useMemo(
-    () => payload?.ownedCourses[0] ?? payload?.availableCourses[0] ?? null,
-    [payload],
-  );
-
-  const hasOwnedCourses = Boolean(payload?.ownedCourses.length);
-  const hasAvailableCourses = Boolean(payload?.availableCourses.length);
+  const ownedCourses = payload?.ownedCourses ?? [];
+  const availableCourses = payload?.availableCourses ?? [];
+  const hasOwnedCourses = ownedCourses.length > 0;
+  const hasAvailableCourses = availableCourses.length > 0;
+  const bootstrapErrorMessage = error ? getBootstrapErrorMessage(error) : null;
+  const phoneShareErrorMessage = requestTelegramContact.error
+    ? getTelegramContactErrorMessage(requestTelegramContact.error)
+    : null;
+  const showUnavailableNotice = hasMounted && !hasBootstrapSource;
+  const unavailableMessage =
+    process.env.NODE_ENV === "development"
+      ? "В dev-режиме добавьте NEXT_PUBLIC_DEV_TELEGRAM_INIT_DATA в .env и перезапустите next dev, либо откройте приложение внутри Telegram."
+      : "Откройте приложение внутри Telegram, чтобы загрузить профиль и курсы.";
 
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
+    <main className="min-h-screen bg-white">
+      <div className="relative min-h-screen w-full bg-white">
         <section
-          className={styles.hero}
-          style={buildHeroBackground(heroCourse?.coverImageUrl ?? null)}
-        >
-          <div className={styles.heroContent}>
-            <span className={styles.eyebrow}>Telegram Mini App</span>
-            <h1 className={styles.heroTitle}>{heroCourse?.title ?? "Base"}</h1>
-            <p className={styles.heroSubtitle}>by Evgenia Shchykno</p>
-            <p className={styles.heroBody}>
-              {heroCourse?.subtitle ||
-                "Тренировки и питание в удобном формате mini app."}
-            </p>
-          </div>
-        </section>
+          className="aspect-[13/12] w-full bg-[url('/header.webp')] bg-cover bg-center bg-no-repeat"
+          aria-hidden="true"
+        />
 
-        <div className={styles.content}>
+        <div className="grid gap-[30px] px-4 pt-[26px] pb-8 sm:px-[18px]">
+          {showUnavailableNotice ? (
+            <StatusNotice
+              title="Mini App недоступен"
+              message={unavailableMessage}
+              tone="error"
+            />
+          ) : null}
+
+          {bootstrapErrorMessage ? (
+            <StatusNotice
+              title="Не удалось загрузить данные"
+              message={bootstrapErrorMessage}
+              tone="error"
+            />
+          ) : null}
+
+          {phoneShareErrorMessage ? (
+            <StatusNotice
+              title="Не удалось получить номер"
+              message={phoneShareErrorMessage}
+              tone="error"
+            />
+          ) : null}
+
           {hasOwnedCourses ? (
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Мои курсы</h2>
-              <div className={styles.list}>
-                {payload?.ownedCourses.map((course) => (
+            <section className="grid gap-4">
+              <h2 className="text-[1.25rem] leading-[1.08] font-bold tracking-[-0.04em] text-[#111111]">
+                Ваши курсы
+              </h2>
+              <div className="grid gap-[18px]">
+                {ownedCourses.map((course) => (
                   <CourseCard
                     key={course.id}
                     course={course}
@@ -292,13 +116,15 @@ export function MiniAppShell() {
             </section>
           ) : null}
 
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Все курсы</h2>
-            {isLoading ? (
+          <section className="grid gap-4">
+            <h2 className="text-[1.25rem] leading-[1.08] font-bold tracking-[-0.04em] text-[#111111]">
+              Все курсы
+            </h2>
+            {isBootstrapPending ? (
               <LoadingSection />
             ) : hasAvailableCourses ? (
-              <div className={styles.list}>
-                {payload?.availableCourses.map((course) => (
+              <div className="grid gap-[18px]">
+                {availableCourses.map((course) => (
                   <CourseCard
                     key={course.id}
                     course={course}
@@ -307,13 +133,26 @@ export function MiniAppShell() {
                   />
                 ))}
               </div>
+            ) : payload ? (
+              <StatusNotice
+                title="Каталог пуст"
+                message="Опубликованные курсы пока не найдены."
+              />
             ) : null}
           </section>
         </div>
 
-        {isRefreshingProfile ? (
-          <div className={styles.loaderOverlay} aria-hidden="true">
-            <span className={styles.loaderSpinner} />
+        {requestTelegramContact.isPending ? (
+          <div
+            className="fixed inset-0 z-20 grid place-items-center bg-[rgba(255,255,255,0.72)] backdrop-blur-[4px]"
+            aria-hidden="true"
+          >
+            <div className="grid justify-items-center gap-[14px] rounded-[28px] bg-[rgba(255,255,255,0.92)] px-5 py-[22px] shadow-[0_20px_40px_rgba(17,17,17,0.08)]">
+              <span className="h-[34px] w-[34px] animate-spin rounded-full border-[3px] border-solid border-[rgba(241,97,180,0.18)] border-t-[#f061b4]" />
+              <p className="max-w-[220px] text-center text-[0.94rem] leading-[1.4] text-[#383838]">
+                Подтверждаем номер телефона в Telegram...
+              </p>
+            </div>
           </div>
         ) : null}
       </div>

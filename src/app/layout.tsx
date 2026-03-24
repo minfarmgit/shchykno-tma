@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import Script from "next/script";
+import { QueryProvider } from "@/components/providers/query-provider";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -32,14 +33,21 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const telegramScriptStrategy =
+    process.env.NODE_ENV === "development" ? "afterInteractive" : "beforeInteractive";
+
   return (
-    <html lang="ru" className={`${manrope.variable} ${cormorant.variable}`}>
-      <body>
+    <html
+      lang="ru"
+      className={`${manrope.variable} ${cormorant.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="bg-white font-sans text-[#181216] antialiased">
         <Script
           src="https://telegram.org/js/telegram-web-app.js"
-          strategy="beforeInteractive"
+          strategy={telegramScriptStrategy}
         />
-        {children}
+        <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
   );
