@@ -66,10 +66,13 @@ function getTildaWebhookToken(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const rawBody = await request.clone().text();
+
     console.info("Tilda webhook request received", {
       method: request.method,
       path: request.nextUrl.pathname,
       headers: summarizeHeaders(request),
+      rawBody,
     });
 
     const token = getTildaWebhookToken(request);
